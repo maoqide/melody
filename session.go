@@ -11,13 +11,14 @@ import (
 
 // Session wrapper around websocket connections.
 type Session struct {
-	Request *http.Request
-	Keys    map[string]interface{}
-	conn    *websocket.Conn
-	output  chan *envelope
-	melody  *Melody
-	open    bool
-	rwmutex *sync.RWMutex
+	Request  *http.Request
+	Keys     map[string]interface{}
+	conn     *websocket.Conn
+	output   chan *envelope
+	melody   *Melody
+	open     bool
+	keymutex *sync.RWMutex
+	rwmutex  *sync.RWMutex
 }
 
 func (s *Session) writeMessage(message *envelope) {
@@ -187,6 +188,8 @@ func (s *Session) CloseWithMsg(msg []byte) error {
 // Set is used to store a new key/value pair exclusivelly for this session.
 // It also lazy initializes s.Keys if it was not used previously.
 func (s *Session) Set(key string, value interface{}) {
+	s.keymutex.Lock()
+	defer s.keymutex.Unlock()
 	if s.Keys == nil {
 		s.Keys = make(map[string]interface{})
 	}
@@ -194,9 +197,21 @@ func (s *Session) Set(key string, value interface{}) {
 	s.Keys[key] = value
 }
 
+// Del is used to delete a key for this session.
+func (s *Session) Del(key string) {
+	s.keymutex.Lock()
+	defer s.keymutex.Unlock()
+	if s.Keys == nil {
+		s.Keys = make(map[string]interface{})
+	}
+	delete(s.Keys, key)
+}
+
 // Get returns the value for the given key, ie: (value, true).
 // If the value does not exists it returns (nil, false)
 func (s *Session) Get(key string) (value interface{}, exists bool) {
+	s.keymutex.RLock()
+	defer s.keymutex.RUnlock()
 	if s.Keys != nil {
 		value, exists = s.Keys[key]
 	}
